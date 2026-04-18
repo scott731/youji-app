@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useState, useEffect, useRef, type ChangeEvent } from 'react'
+import { useState, useEffect, useRef, useMemo, type ChangeEvent } from 'react'
 import { store } from '../store'
 import type { Friend } from '../types'
 
@@ -47,7 +47,7 @@ export default function FriendEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const isNew = !id
-  const existing = id ? store.getFriend(id) : null
+  const existing = useMemo(() => (id ? store.getFriend(id) : null), [id])
   const groups = store.getGroups()
 
   const [name, setName] = useState('')

@@ -101,8 +101,6 @@ export default function Events() {
           <ul className="bg-card rounded-xl shadow-sm overflow-hidden">
             {upcoming.slice(0, 15).map((e) => {
               const friend = store.getFriend(e.friendId)
-              const d = e.eventDate
-              const displayDate = `${d.slice(5).replace('-', '/')} ${d}`
               return (
                 <li key={e.id}>
                   <Link

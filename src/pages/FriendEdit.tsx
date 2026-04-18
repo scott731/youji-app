@@ -3,10 +3,6 @@ import { useState, useEffect } from 'react'
 import { store } from '../store'
 import type { Friend } from '../types'
 
-const GROUP_OPTIONS = [
-  '家人', '亲戚', '同学', '同事', '前同事', '朋友', '邻居', '客户', '其他',
-]
-
 export default function FriendEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()

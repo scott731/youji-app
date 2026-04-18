@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>友记 - 让每一份友谊都被用心记住</title>
+  <!-- 使用 jsDelivr CDN，对本地 file 打开更友好 -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7/babel.min.js" crossorigin></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: '#FF9500', secondary: '#5AC8FA', bg: '#FAFAFA', card: '#FFFFFF' } } } };
+  </script>
+  <style> body { font-family: "PingFang SC", "Microsoft YaHei", sans-serif; background: #FAFAFA; margin: 0; } #root { min-height: 100vh; padding-bottom: 72px; } </style>
+</head>
+<body>
+  <div id="root">
+    <div id="load-msg" style="padding: 2rem; text-align: center; color: #666;">正在加载友记…</div>
+  </div>
+  <script>
+    window.__youji_error = null;
+    window.onerror = function(msg, url, line, col, err) {
+      window.__youji_error = msg + (err ? ' ' + err.stack : '');
+      var el = document.getElementById('load-msg');
+      if (el) el.outerHTML = '<div style="padding:2rem;max-width:400px;margin:0 auto;text-align:left;color:#c00;"><p><strong>加载出错</strong></p><pre style="white-space:pre-wrap;font-size:12px;">' + (window.__youji_error || msg) + '</pre><p style="margin-top:1rem;color:#666;">请确保已联网后刷新。若仍空白，可尝试：在项目文件夹打开「终端」，执行 <code>npx serve .</code> 后用浏览器访问提示的地址。</p></div>';
+      return false;
+    };
+    setTimeout(function() {
+      var msg = document.getElementById('load-msg');
+      if (msg && msg.textContent.indexOf('正在加载') !== -1) {
+        msg.outerHTML = '<div style="padding:2rem;text-align:center;color:#c00;">加载超时。请检查网络后刷新，或在本文件夹打开终端执行 <code>npx serve .</code> 用浏览器访问提示的地址打开。</div>';
+      }
+    }, 8000);
+  </script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo } = React;
+
+    // ---------- Store (localStorage) ----------
+    const KEYS = { friends: 'youji_friends', family: 'youji_family', events: 'youji_events', gifts: 'youji_gifts', groups: 'youji_groups', user: 'youji_user' };
+    const load = (k, def) => { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : def; } catch (_) { return def; } };
+    const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
+    const now = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2);
+    const DEFAULT_GROUPS = [
+      { id: 'g1', name: '家人', sortOrder: 1 }, { id: 'g2', name: '亲戚', sortOrder: 2 }, { id: 'g3', name: '同学', sortOrder: 3 },
+      { id: 'g4', name: '同事', sortOrder: 4 }, { id: 'g5', name: '前同事', sortOrder: 5 }, { id: 'g6', name: '朋友', sortOrder: 6 },
+      { id: 'g7', name: '邻居', sortOrder: 7 }, { id: 'g8', name: '客户', sortOrder: 8 }, { id: 'g9', name: '其他', sortOrder: 9 }
+    ];
+    const store = {
+      getFriends: () => load(KEYS.friends, []),
+      setFriends: (list) => save(KEYS.friends, list),
+      getFriend: (id) => store.getFriends().find(f => f.id === id),
+      saveFriend: (f) => {
+        const list = store.getFriends();
+        const idx = list.findIndex(x => x.id === f.id);
+        f.updatedAt = now();
+        if (idx >= 0) list[idx] = f; else { f.id = f.id || uid(); f.createdAt = f.updatedAt; list.push(f); }
+        store.setFriends(list); return f;
+      },
+      deleteFriend: (id) => {
+        store.setFriends(store.getFriends().filter(x => x.id !== id));
+        store.getFamilyByFriendId(id).forEach(m => store.deleteFamilyMember(m.id));
+        store.getEvents().filter(e => e.friendId === id).forEach(e => store.deleteEvent(e.id));
+        store.getGifts().filter(g => g.friendId === id).forEach(g => store.deleteGift(g.id));
+      },
+      getFamily: () => load(KEYS.family, []),
+      setFamily: (list) => save(KEYS.family, list),
+      getFamilyByFriendId: (fid) => store.getFamily().filter(m => m.friendId === fid),
+      saveFamilyMember: (m) => {
+        const list = store.getFamily();
+        const idx = list.findIndex(x => x.id === m.id);
+        m.updatedAt = now();
+        if (idx >= 0) list[idx] = m; else { m.id = m.id || uid(); m.createdAt = m.updatedAt; list.push(m); }
+        store.setFamily(list); return m;
+      },
+      deleteFamilyMember: (id) => store.setFamily(store.getFamily().filter(m => m.id !== id)),
+      getEvents: () => load(KEYS.events, []),
+      setEvents: (list) => save(KEYS.events, list),
+      saveEvent: (e) => {
+        const list = store.getEvents();
+        const idx = list.findIndex(x => x.id === e.id);
+        e.updatedAt = now();
+        if (idx >= 0) list[idx] = e; else { e.id = e.id || uid(); e.createdAt = e.updatedAt; list.push(e); }
+        store.setEvents(list); return e;
+      },
+      deleteEvent: (id) => store.setEvents(store.getEvents().filter(e => e.id !== id)),
+      getEventsByFriendId: (fid) => store.getEvents().filter(e => e.friendId === fid).sort((a,b) => b.eventDate.localeCompare(a.eventDate)),
+      getUpcomingEvents: (days = 7) => {
+        const today = new Date().toISOString().slice(0, 10);
+        const end = new Date(); end.setDate(end.getDate() + days);
+        return store.getEvents().filter(e => e.eventDate >= today && e.eventDate <= end.toISOString().slice(0, 10) && e.hasReminder).sort((a,b) => a.eventDate.localeCompare(b.eventDate));
+      },
+      getGifts: () => load(KEYS.gifts, []),
+      setGifts: (list) => save(KEYS.gifts, list),
+      saveGift: (g) => {
+        const list = store.getGifts();
+        const idx = list.findIndex(x => x.id === g.id);
+        g.updatedAt = now();
+        if (idx >= 0) list[idx] = g; else { g.id = g.id || uid(); g.createdAt = g.updatedAt; list.push(g); }
+        store.setGifts(list); return g;
+      },
+      deleteGift: (id) => store.setGifts(store.getGifts().filter(g => g.id !== id)),
+      getGiftsByFriendId: (fid) => store.getGifts().filter(g => g.friendId === fid).sort((a,b) => b.eventDate.localeCompare(a.eventDate)),
+      getGiftBalance: (fid) => store.getGiftsByFriendId(fid).reduce((sum, g) => sum + (g.direction === 2 ? -g.amount : g.amount), 0),
+      getGroups: () => { const s = load(KEYS.groups, []); if (s.length === 0) { const t = DEFAULT_GROUPS.map(g => ({ ...g, createdAt: now(), updatedAt: now() })); save(KEYS.groups, t); return t; } return s; },
+      getUser: () => load(KEYS.user, { nickname: '用户' }),
+      setUser: (u) => save(KEYS.user, u),
+    };
+    function getRecentUpdates(friends, events, limit = 5) {
+      const byFriend = new Map();
+      events.forEach(e => { if (!byFriend.has(e.friendId)) byFriend.set(e.friendId, []); byFriend.get(e.friendId).push(e); });
+      const sorted = [...friends].sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      return sorted.slice(0, limit).map(f => {
+        const evts = (byFriend.get(f.id) || []).sort((a,b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+        const latest = evts[0];
+        let summary = (f.notes || '').slice(0, 30) || (latest ? latest.title : '暂无动态');
+        if ((f.notes || '').length > 30) summary += '...';
+        return { friend: f, event: latest, summary };
+      });
+    }
+
+    // ---------- Hash Router ----------
+    function useHashRoute() {
+      const [path, setPath] = useState(() => (window.location.hash || '#/').slice(1));
+      useEffect(() => {
+        const fn = () => setPath((window.location.hash || '#/').slice(1));
+        window.addEventListener('hashchange', fn);
+        return () => window.removeEventListener('hashchange', fn);
+      }, []);
+      const navigate = (to) => { window.location.hash = to; };
+      const params = useMemo(() => {
+        const p = path.split('/').filter(Boolean);
+        return { page: p[0] || 'home', id: p[1], sub: p[2] };
+      }, [path]);
+      return { path, params, navigate };
+    }
+
+    // ---------- App ----------
+    function App() {
+      const { params, navigate, path } = useHashRoute();
+      const isDetail = params.page === 'friends' && params.id && params.sub !== 'edit' && params.sub !== 'new';
+      const navs = [
+        { page: 'home', hash: '#/', label: '首页', icon: '🏠' },
+        { page: 'friends', hash: '#/friends', label: '朋友', icon: '👥' },
+        { page: 'add', hash: '#/friends/new', label: '添加', icon: '➕', highlight: true },
+        { page: 'events', hash: '#/events', label: '日历', icon: '📅' },
+        { page: 'me', hash: '#/me', label: '我的', icon: '👤' },
+      ];
+      let Content = Home;
+      if (params.page === 'friends') {
+        if (params.id === 'new') Content = () => <FriendEdit navigate={navigate} id={null} />;
+        else if (params.sub === 'edit') Content = () => <FriendEdit navigate={navigate} id={params.id} />;
+        else if (params.id) Content = () => <FriendDetail navigate={navigate} id={params.id} />;
+        else Content = Friends;
+      } else if (params.page === 'events') Content = Events;
+      else if (params.page === 'me') Content = Me;
+      return (
+        <div className="min-h-screen bg-bg">
+          <main className={isDetail ? '' : 'pb-16'}><Content /></main>
+          {!isDetail && (
+            <nav className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around h-16 items-center z-50">
+              {navs.map(n => {
+                const isActive = n.hash === '#/' ? !path || path === 'index.html' : path === n.hash.slice(1);
+                return (
+                  <a key={n.hash} href={n.hash} className={'flex flex-col items-center text-xs ' + (n.highlight ? 'text-primary font-medium' : (isActive ? 'text-primary' : 'text-gray-500'))}>
+                    <span className="text-lg">{n.icon}</span><span>{n.label}</span>
+                  </a>
+                );
+              })}
+            </nav>
+          )}
+        </div>
+      );
+    }
+
+    function Home() {
+      const user = store.getUser();
+      const friends = store.getFriends();
+      const events = store.getEvents();
+      const upcoming = store.getUpcomingEvents(7);
+      const recent = getRecentUpdates(friends, events, 5);
+      return (
+        <div className="pb-4">
+          <header className="bg-primary text-white px-4 py-6 rounded-b-2xl">
+            <div className="flex justify-between"><h1 className="text-xl font-bold">友记</h1><a href="#/me" className="p-1 rounded-full hover:bg-white/20">⚙️</a></div>
+            <p className="mt-3 text-white/90 text-sm">你好，{user.nickname}</p>
+            {upcoming.length > 0 && <p className="mt-1 text-white/80 text-sm">近期有 {upcoming.length} 个事件</p>}
+          </header>
+          <section className="px-4 -mt-2">
+            <div className="bg-white rounded-2xl shadow-sm p-4">
+              <h2 className="text-base font-medium mb-3">近期事件</h2>
+              {upcoming.length === 0 ? <p className="text-gray-500 text-sm py-4">暂无即将到来的事件</p> : (
+                <div className="flex gap-3 overflow-x-auto pb-2">
+                  {upcoming.slice(0, 5).map(e => {
+                    const friend = store.getFriend(e.friendId);
+                    const md = e.eventDate.slice(5).replace('-', '/');
+                    return (
+                      <a key={e.id} href={'#/friends/'+e.friendId} className="flex-shrink-0 w-24 rounded-xl bg-gray-50 border p-3 text-center">
+                        <div className="text-primary font-medium text-sm">{md}</div>
+                        <div className="text-sm truncate">{e.title}</div>
+                        <div className="text-gray-500 text-xs truncate">{friend?.name || ''}</div>
+                      </a>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
+          <section className="px-4 mt-4">
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <h2 className="text-base font-medium px-4 pt-4 pb-2">最近更新</h2>
+              {recent.length === 0 ? <p className="text-gray-500 text-sm px-4 pb-6">添加朋友后这里会显示</p> : (
+                <ul>
+                  {recent.map(({ friend, event, summary }) => (
+                    <li key={friend.id}>
+                      <a href={'#/friends/'+friend.id} className="flex gap-3 px-4 py-3 border-t hover:bg-gray-50">
+                        <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium">{friend.name.slice(0,1)}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium">{friend.name}</div>
+                          <div className="text-sm text-gray-600 truncate">{summary}</div>
+                          <div className="text-xs text-gray-400">{(event?.updatedAt || friend.updatedAt || '').slice(0,10)} 更新</div>
+                        </div>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    function Friends() {
+      const [groupFilter, setGroupFilter] = useState('');
+      const [keyword, setKeyword] = useState('');
+      const groups = store.getGroups();
+      const allFriends = store.getFriends();
+      const filtered = useMemo(() => {
+        let list = allFriends;
+        if (groupFilter) list = list.filter(f => f.groupId === groupFilter || f.groupName === groupFilter);
+        if (keyword.trim()) {
+          const k = keyword.trim().toLowerCase();
+          list = list.filter(f => (f.name||'').toLowerCase().includes(k) || (f.notes||'').toLowerCase().includes(k) || (f.tags||[]).some(t => t.toLowerCase().includes(k)));
+        }
+        return list.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      }, [allFriends, groupFilter, keyword]);
+      const pinyin = c => { const code = c.charCodeAt(0); if (code >= 0x4e00 && code <= 0x9fa5) return String.fromCharCode(0x41 + Math.min(25, Math.floor((code - 0x4e00) / 500))); return (c >= 'a' && c <= 'z') ? c.toUpperCase() : (c >= 'A' && c <= 'Z') ? c : '#'; };
+      const byLetter = useMemo(() => {
+        const map = new Map();
+        filtered.forEach(f => { const L = pinyin((f.name||'')[0] || '#'); if (!map.has(L)) map.set(L, []); map.get(L).push(f); });
+        map.forEach(arr => arr.sort((a,b) => (a.name||'').localeCompare(b.name||'')));
+        return map;
+      }, [filtered]);
+      const letters = Array.from(byLetter.keys()).sort((a,b) => a === '#' ? 1 : b === '#' ? -1 : a.localeCompare(b));
+      return (
+        <div className="pb-4">
+          <header className="bg-white px-4 py-4 border-b">
+            <h1 className="text-xl font-bold">我的朋友</h1>
+            <input type="search" placeholder="搜索姓名、标签、备注" value={keyword} onChange={e => setKeyword(e.target.value)} className="mt-3 w-full px-3 py-2 rounded-lg border bg-gray-50 text-sm" />
+            <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
+              <button onClick={() => setGroupFilter('')} className={'flex-shrink-0 px-3 py-1.5 rounded-full text-sm ' + (!groupFilter ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600')}>全部</button>
+              {groups.map(g => (
+                <button key={g.id} onClick={() => setGroupFilter(groupFilter === g.name ? '' : g.name)} className={'flex-shrink-0 px-3 py-1.5 rounded-full text-sm ' + (groupFilter === g.name ? 'bg-primary text-white' : 'bg-gray-100 text-gray-600')}>{g.name}</button>
+              ))}
+            </div>
+          </header>
+          <div className="px-4 py-2">
+            {letters.length === 0 ? <p className="text-gray-500 text-center py-12">暂无朋友，点击底部「添加」开始</p> : letters.map(letter => (
+              <section key={letter} className="mb-4">
+                <div className="text-sm font-medium text-gray-500 py-1">{letter}</div>
+                <ul className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  {(byLetter.get(letter) || []).map(f => {
+                    const evts = store.getEventsByFriendId(f.id);
+                    const family = store.getFamilyByFriendId(f.id);
+                    const child = family.find(m => ['儿子','女儿'].includes(m.relation));
+                    let subtitle = f.groupName || '';
+                    if (f.knowDate) { const y = Math.floor((Date.now() - new Date(f.knowDate)) / (365*24*60*60*1000)); if (y>0) subtitle += (subtitle ? ' · ' : '') + '认识' + y + '年'; }
+                    const lastLine = child ? (child.relation + (child.education?.grade || '在读')) : (evts[0]?.title || '');
+                    return (
+                      <li key={f.id}>
+                        <a href={'#/friends/'+f.id} className="flex gap-3 px-4 py-3 border-b last:border-0 hover:bg-gray-50">
+                          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-medium">{f.name.slice(0,1)}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2"><span className="font-medium">{f.name}</span><span className="text-amber-500 text-xs">{'★'.repeat(f.intimacyLevel)}</span></div>
+                            {subtitle && <div className="text-sm text-gray-600">{subtitle}</div>}
+                            {lastLine && <div className="text-sm text-gray-500 truncate">{lastLine}</div>}
+                          </div>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function FriendDetail({ navigate, id }) {
+      const [tab, setTab] = useState('overview');
+      const friend = store.getFriend(id);
+      if (!friend) return <div className="p-8 text-center"><p className="text-gray-600">未找到该朋友</p><a href="#/friends" className="text-primary mt-4 inline-block">返回列表</a></div>;
+      const family = store.getFamilyByFriendId(friend.id);
+      const events = store.getEventsByFriendId(friend.id);
+      const gifts = store.getGiftsByFriendId(friend.id);
+      const balance = store.getGiftBalance(friend.id);
+      const tabs = [{ key: 'overview', label: '概况' }, { key: 'family', label: '家庭' }, { key: 'events', label: '事件' }, { key: 'gifts', label: '礼金' }];
+      const knowYears = friend.knowDate ? Math.floor((Date.now() - new Date(friend.knowDate)) / (365*24*60*60*1000)) : 0;
+      return (
+        <div className="min-h-screen bg-bg">
+          <header className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex justify-between items-center">
+            <button onClick={() => navigate('#/friends')} className="p-1 -ml-1">← 返回</button>
+            <span className="font-medium">朋友详情</span>
+            <a href={'#/friends/'+friend.id+'/edit'} className="text-primary text-sm">编辑</a>
+          </header>
+          <div className="px-4 pt-6 pb-4 bg-white">
+            <div className="flex justify-center mb-2">
+              <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-medium">{friend.name.slice(0,1)}</div>
+            </div>
+            <h2 className="text-xl font-bold text-center">{friend.name}</h2>
+            <div className="flex justify-center gap-1 mt-1 text-amber-500 text-sm">{'★'.repeat(friend.intimacyLevel)}</div>
+            <p className="text-center text-gray-600 text-sm mt-1">{friend.groupName || '未分组'}{knowYears ? ' · 认识' + knowYears + '年' : ''}</p>
+          </div>
+          <div className="flex border-b bg-white">
+            {tabs.map(t => (
+              <button key={t.key} onClick={() => setTab(t.key)} className={'flex-1 py-3 text-sm font-medium ' + (tab === t.key ? 'text-primary border-b-2 border-primary' : 'text-gray-500')}>{t.label}</button>
+            ))}
+          </div>
+          <div className="p-4">
+            {tab === 'overview' && (
+              <div className="space-y-4">
+                <Card title="基本信息">
+                  {[['生日',friend.birthday],['手机',friend.phone],['微信',friend.wechat],['住址',friend.address]].filter(([,v]) => v).map(([l,v]) => <Row key={l} label={l} value={v} />)}
+                  {!friend.birthday && !friend.phone && !friend.wechat && <p className="text-gray-500 text-sm">暂无基本信息</p>}
+                </Card>
+                <Card title="职业信息">
+                  {[['公司',friend.company],['职位',friend.position]].filter(([,v]) => v).map(([l,v]) => <Row key={l} label={l} value={v} />)}
+                  {!friend.company && !friend.position && <p className="text-gray-500 text-sm">暂无职业信息</p>}
+                </Card>
+                {friend.notes && <Card title="备注"><p className="text-sm whitespace-pre-wrap">{friend.notes}</p></Card>}
+              </div>
+            )}
+            {tab === 'family' && (
+              <div className="space-y-4">
+                {family.map(m => (
+                  <Card key={m.id} title={m.relation + (m.name ? ' · '+m.name : '')}>
+                    {m.birthday && <Row label="生日" value={m.birthday} />}
+                    {m.education && m.education.schoolName && <Row label="学校" value={m.education.schoolName} />}
+                    {m.education && m.education.grade && <Row label="年级" value={m.education.grade} />}
+                    {m.notes && <p className="text-sm mt-2">{m.notes}</p>}
+                  </Card>
+                ))}
+                <p className="text-gray-500 text-sm">家庭成员可在「编辑朋友」页中补充；或使用上方 Vite 版项目获得完整表单。</p>
+              </div>
+            )}
+            {tab === 'events' && (
+              <div className="space-y-4">
+                {events.map(e => <Card key={e.id} title={e.title}><Row label="类型" value={e.eventType} /><Row label="日期" value={e.eventDate} /></Card>)}
+                <AddEventForm friendId={friend.id} onDone={() => window.location.reload()} />
+              </div>
+            )}
+            {tab === 'gifts' && (
+              <div className="space-y-4">
+                <Card title="往来差额"><p className="text-lg font-medium">{balance > 0 ? '对方多给' : balance < 0 ? '我多给' : '基本平衡'}</p><p className="text-2xl font-bold text-primary">{Math.abs(balance).toFixed(0)} 元</p></Card>
+                {gifts.map(g => <Card key={g.id} title={g.eventType}><Row label="日期" value={g.eventDate} /><Row label={g.direction===1?'收入':'支出'} value={g.amount+' 元'} /></Card>)}
+                <AddGiftForm friendId={friend.id} onDone={() => window.location.reload()} />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function Card({ title, children }) {
+      return <div className="bg-white rounded-xl shadow-sm p-4"><h3 className="text-sm font-medium text-gray-500 mb-3">{title}</h3>{children}</div>;
+    }
+    function Row({ label, value }) { return <div className="flex justify-between text-sm py-1"><span className="text-gray-500">{label}</span><span>{value}</span></div>; }
+
+    function AddEventForm({ friendId, onDone }) {
+      const [open, setOpen] = useState(false);
+      const [eventType, setEventType] = useState('生日');
+      const [eventDate, setEventDate] = useState('');
+      const [title, setTitle] = useState('');
+      const [hasReminder, setHasReminder] = useState(true);
+      const submit = (e) => { e.preventDefault(); store.saveEvent({ id: '', friendId, eventType, eventDate, title: title || eventType, hasReminder, createdAt: '', updatedAt: '' }); setOpen(false); onDone(); };
+      if (!open) return <button onClick={() => setOpen(true)} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 text-sm">+ 添加事件</button>;
+      return (
+        <form onSubmit={submit} className="bg-white rounded-xl p-4 border space-y-3">
+          <h3 className="font-medium">添加事件</h3>
+          <div><label className="block text-sm text-gray-500 mb-1">类型</label><select value={eventType} onChange={e=>setEventType(e.target.value)} className="w-full px-3 py-2 border rounded-lg">{[ '生日','婚嫁','升学','换工作','乔迁','其他'].map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label className="block text-sm text-gray-500 mb-1">日期 *</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} required className="w-full px-3 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm text-gray-500 mb-1">标题</label><input value={title} onChange={e=>setTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder="简短描述" /></div>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={hasReminder} onChange={e=>setHasReminder(e.target.checked)} /><span className="text-sm">设置提醒</span></label>
+          <div className="flex gap-3"><button type="button" onClick={()=>setOpen(false)} className="flex-1 py-2 border rounded-lg">取消</button><button type="submit" className="flex-1 py-2 bg-primary text-white rounded-lg">保存</button></div>
+        </form>
+      );
+    }
+
+    function AddGiftForm({ friendId, onDone }) {
+      const [open, setOpen] = useState(false);
+      const [eventType, setEventType] = useState('婚礼');
+      const [eventDate, setEventDate] = useState('');
+      const [direction, setDirection] = useState(2);
+      const [amount, setAmount] = useState('');
+      const submit = (e) => { e.preventDefault(); const n = parseFloat(amount); if (isNaN(n) || n<=0) return; store.saveGift({ id: '', friendId, eventType, eventDate, direction: direction===1?1:2, amount: n, createdAt: '', updatedAt: '' }); setOpen(false); onDone(); };
+      if (!open) return <button onClick={() => setOpen(true)} className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-500 text-sm">+ 添加礼金记录</button>;
+      return (
+        <form onSubmit={submit} className="bg-white rounded-xl p-4 border space-y-3">
+          <h3 className="font-medium">添加礼金记录</h3>
+          <div><label className="block text-sm text-gray-500 mb-1">类型</label><select value={eventType} onChange={e=>setEventType(e.target.value)} className="w-full px-3 py-2 border rounded-lg">{[ '婚礼','满月','寿宴','丧事','其他'].map(t=><option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label className="block text-sm text-gray-500 mb-1">日期 *</label><input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} required className="w-full px-3 py-2 border rounded-lg" /></div>
+          <div><label className="block text-sm text-gray-500 mb-1">方向</label><select value={direction} onChange={e=>setDirection(Number(e.target.value))} className="w-full px-3 py-2 border rounded-lg"><option value={1}>收入</option><option value={2}>支出</option></select></div>
+          <div><label className="block text-sm text-gray-500 mb-1">金额 *</label><input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} required className="w-full px-3 py-2 border rounded-lg" /></div>
+          <div className="flex gap-3"><button type="button" onClick={()=>setOpen(false)} className="flex-1 py-2 border rounded-lg">取消</button><button type="submit" className="flex-1 py-2 bg-primary text-white rounded-lg">保存</button></div>
+        </form>
+      );
+    }
+
+    function FriendEdit({ navigate, id }) {
+      const isNew = !id;
+      const existing = id ? store.getFriend(id) : null;
+      const groups = store.getGroups();
+      const [name, setName] = useState(existing?.name || '');
+      const [nickname, setNickname] = useState(existing?.nickname || '');
+      const [groupId, setGroupId] = useState(existing?.groupId || '');
+      const [intimacyLevel, setIntimacyLevel] = useState(existing?.intimacyLevel ?? 3);
+      const [phone, setPhone] = useState(existing?.phone || '');
+      const [wechat, setWechat] = useState(existing?.wechat || '');
+      const [company, setCompany] = useState(existing?.company || '');
+      const [position, setPosition] = useState(existing?.position || '');
+      const [birthday, setBirthday] = useState((existing?.birthday || '').slice(0,10));
+      const [knowDate, setKnowDate] = useState((existing?.knowDate || '').slice(0,10));
+      const [notes, setNotes] = useState(existing?.notes || '');
+      const [tags, setTags] = useState((existing?.tags || []).join('、'));
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        if (!name.trim()) return;
+        const group = groups.find(g => g.id === groupId);
+        const f = { ...(existing || {}), id: existing?.id || uid(), name: name.trim(), nickname: nickname.trim() || undefined, groupId: groupId || undefined, groupName: group?.name, intimacyLevel, phone: phone.trim() || undefined, wechat: wechat.trim() || undefined, company: company.trim() || undefined, position: position.trim() || undefined, birthday: birthday || undefined, knowDate: knowDate || undefined, notes: notes.trim() || undefined, tags: tags.trim() ? tags.split(/[、,，]/).map(s=>s.trim()).filter(Boolean) : undefined, createdAt: existing?.createdAt || now(), updatedAt: now() };
+        store.saveFriend(f);
+        if (isNew) navigate('#/friends/' + f.id); else navigate('#/friends');
+      };
+      return (
+        <div className="min-h-screen bg-bg pb-8">
+          <header className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex justify-between items-center">
+            <a href={isNew ? '#/friends' : '#/friends/'+id} className="text-gray-600">取消</a>
+            <span className="font-medium">{isNew ? '添加朋友' : '编辑朋友'}</span>
+            <button type="submit" form="fe" className="text-primary font-medium">保存</button>
+          </header>
+          <form id="fe" onSubmit={handleSubmit} className="p-4 space-y-4">
+            <div className="flex justify-center py-6"><div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center text-primary text-3xl font-medium">{name.slice(0,1)||'?'}</div></div>
+            <Section title="基础信息">
+              <Input label="姓名 *" value={name} onChange={setName} required />
+              <div><label className="block text-sm text-gray-500 mb-1">分组</label><select value={groupId} onChange={e=>setGroupId(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white"><option value="">请选择</option>{groups.map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>
+              <Input label="认识时间" type="date" value={knowDate} onChange={setKnowDate} />
+              <div><label className="block text-sm text-gray-500 mb-1">亲密度</label><div className="flex gap-1">{[1,2,3,4,5].map(n=><button key={n} type="button" onClick={()=>setIntimacyLevel(n)} className={'w-10 h-10 rounded-lg ' + (intimacyLevel>=n?'bg-amber-400 text-white':'bg-gray-100 text-gray-500')}>★</button>)}</div></div>
+            </Section>
+            <Section title="联系方式"><Input label="手机" value={phone} onChange={setPhone} /><Input label="微信" value={wechat} onChange={setWechat} /></Section>
+            <Section title="职业信息"><Input label="公司" value={company} onChange={setCompany} /><Input label="职位" value={position} onChange={setPosition} /></Section>
+            <Section title="备注"><Input label="生日" type="date" value={birthday} onChange={setBirthday} /><div><label className="block text-sm text-gray-500 mb-1">备注</label><textarea value={notes} onChange={e=>setNotes(e.target.value)} className="w-full px-3 py-2 border rounded-lg" rows={2} /></div><Input label="标签" value={tags} onChange={setTags} placeholder="多个用顿号分隔" /></Section>
+          </form>
+        </div>
+      );
+    }
+    function Section({ title, children }) { return <div className="bg-white rounded-xl shadow-sm overflow-hidden"><div className="px-4 py-2 bg-gray-50 text-sm font-medium text-gray-500 border-b">{title}</div><div className="p-4 space-y-3">{children}</div></div>; }
+    function Input({ label, value, onChange, type='text', placeholder, required }) { return <div><label className="block text-sm text-gray-500 mb-1">{label}</label><input type={type} value={value} onChange={e=>onChange(e.target.value)} className="w-full px-3 py-2 border rounded-lg" placeholder={placeholder} required={required} /></div>; }
+
+    function Events() {
+      const today = new Date();
+      const [year, setYear] = useState(today.getFullYear());
+      const [month, setMonth] = useState(today.getMonth()+1);
+      const events = store.getEvents();
+      const upcoming = store.getUpcomingEvents(30);
+      const grid = useMemo(() => { const first = new Date(year, month-1, 1); const last = new Date(year, month, 0); const startPad = first.getDay()===0 ? 6 : first.getDay()-1; const days = last.getDate(); const total = startPad + days; const rows = Math.ceil(total/7); const g = []; for(let i=0;i<startPad;i++) g.push(null); for(let d=1;d<=days;d++) g.push(d); for(let i=0;i<rows*7-g.length;i++) g.push(null); return g; }, [year, month]);
+      const eventsByDate = useMemo(() => { const m = new Map(); events.forEach(e => { if (!m.has(e.eventDate)) m.set(e.eventDate, []); m.get(e.eventDate).push(e); }); return m; }, [events]);
+      const weekDays = ['一','二','三','四','五','六','日'];
+      return (
+        <div className="pb-4">
+          <header className="bg-white px-4 py-4 border-b">
+            <h1 className="text-xl font-bold">事件日历</h1>
+            <div className="flex items-center justify-between mt-4">
+              <button type="button" onClick={() => month===1 ? (setMonth(12), setYear(y=>y-1)) : setMonth(m=>m-1)} className="p-2 rounded-lg hover:bg-gray-100">◀</button>
+              <span className="font-medium">{year} 年 {month} 月</span>
+              <button type="button" onClick={() => month===12 ? (setMonth(1), setYear(y=>y+1)) : setMonth(m=>m+1)} className="p-2 rounded-lg hover:bg-gray-100">▶</button>
+            </div>
+          </header>
+          <div className="px-4 py-4">
+            <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <div className="grid grid-cols-7 text-center text-sm text-gray-500 border-b">{weekDays.map(d=><div key={d} className="py-2">{d}</div>)}</div>
+              <div className="grid grid-cols-7">
+                {grid.map((day, i) => {
+                  if (day === null) return <div key={i} className="aspect-square" />;
+                  const dateStr = year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+                  const dayEvents = eventsByDate.get(dateStr) || [];
+                  const isToday = today.getFullYear()===year && today.getMonth()+1===month && today.getDate()===day;
+                  return (
+                    <div key={i} className={'aspect-square flex flex-col items-center justify-center border-b border-r ' + (isToday ? 'bg-primary/10 text-primary font-medium' : '')}>
+                      <span>{day}</span>
+                      {dayEvents.length > 0 && <span className="w-1.5 h-1.5 rounded-full bg-primary mt-0.5" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <section className="px-4 mt-4">
+            <h2 className="text-base font-medium mb-3">即将到来</h2>
+            {upcoming.length === 0 ? <p className="text-gray-500 text-sm py-4">暂无</p> : (
+              <ul className="bg-white rounded-xl shadow-sm overflow-hidden">
+                {upcoming.slice(0,15).map(e => { const friend = store.getFriend(e.friendId); return (
+                  <li key={e.id}><a href={'#/friends/'+e.friendId} className="flex gap-3 px-4 py-3 border-b hover:bg-gray-50">
+                    <div className="text-primary font-medium text-sm w-14">{e.eventDate.slice(5)}</div>
+                    <div className="flex-1"><div className="font-medium">{e.title}</div><div className="text-sm text-gray-600">{friend?.name} · {e.eventType}</div></div>
+                  </a></li>
+                ); })}
+              </ul>
+            )}
+          </section>
+        </div>
+      );
+    }
+
+    function Me() {
+      const user = store.getUser();
+      const [nickname, setNickname] = useState(user.nickname);
+      const handleSave = () => { store.setUser({ nickname: nickname.trim() || '用户' }); };
+      const handleExport = () => { const data = { exportAt: new Date().toISOString(), user: store.getUser(), friends: store.getFriends(), family: store.getFamily(), events: store.getEvents(), gifts: store.getGifts(), groups: store.getGroups() }; const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = '友记备份_' + new Date().toISOString().slice(0,10) + '.json'; a.click(); URL.revokeObjectURL(a.href); };
+      return (
+        <div className="pb-4">
+          <header className="bg-primary text-white px-4 py-8 rounded-b-2xl"><h1 className="text-xl font-bold">我的</h1><p className="mt-2 text-white/90 text-sm">设置与数据管理</p></header>
+          <div className="px-4 -mt-2 space-y-4">
+            <section className="bg-white rounded-2xl shadow-sm p-4">
+              <h2 className="text-base font-medium mb-3">个人信息</h2>
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xl font-medium">{user.nickname.slice(0,1)}</div>
+                <div className="flex-1"><label className="block text-sm text-gray-500 mb-1">昵称（首页问候）</label><input value={nickname} onChange={e=>setNickname(e.target.value)} onBlur={handleSave} className="w-full px-3 py-2 border rounded-lg" placeholder="如：张三" /></div>
+              </div>
+            </section>
+            <section className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <h2 className="text-base font-medium px-4 pt-4 pb-2">数据概览</h2>
+              <ul className="divide-y"><li className="px-4 py-3 flex justify-between"><span className="text-gray-600">朋友数量</span><span className="font-medium">{store.getFriends().length}</span></li><li className="px-4 py-3 flex justify-between"><span className="text-gray-600">事件记录</span><span className="font-medium">{store.getEvents().length}</span></li><li className="px-4 py-3 flex justify-between"><span className="text-gray-600">礼金记录</span><span className="font-medium">{store.getGifts().length}</span></li></ul>
+            </section>
+            <section className="bg-white rounded-2xl shadow-sm p-4">
+              <h2 className="text-base font-medium mb-2">数据管理</h2>
+              <button onClick={handleExport} className="w-full py-3 rounded-xl border text-left px-4 hover:bg-gray-50">导出备份（JSON）</button>
+              <p className="text-xs text-gray-500 mt-2">数据保存在浏览器本地，导出后可备份到电脑。</p>
+            </section>
+            <section className="text-center py-8 text-gray-500 text-sm"><p>友记 · 让每一份友谊都被用心记住</p><p className="mt-1">V1.0 · 单页版（无需 Node.js）</p></section>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    try {
+      if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+        document.getElementById('root').innerHTML = '<div style="padding:2rem;text-align:center;color:#c00;">React 未加载成功，请检查网络后刷新页面。</div>';
+      } else {
+        root.render(<App />);
+      }
+    } catch (e) {
+      document.getElementById('root').innerHTML = '<div style="padding:2rem;max-width:400px;margin:0 auto;color:#c00;"><p><strong>运行出错</strong></p><pre style="white-space:pre-wrap;font-size:12px;">' + (e.message || e) + '</pre></div>';
+    }
+  </script>
+</body>
+</html>

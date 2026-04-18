@@ -63,8 +63,12 @@ export default function Home() {
                     to={`/friends/${friend.id}`}
                     className="flex gap-3 px-4 py-3 border-t border-gray-100 hover:bg-gray-50 active:bg-gray-100"
                   >
-                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium flex-shrink-0">
-                      {friend.name.slice(0, 1)}
+                    <div className="w-10 h-10 rounded-full bg-primary/20 overflow-hidden flex items-center justify-center text-primary font-medium flex-shrink-0">
+                      {friend.avatarUrl ? (
+                        <img src={friend.avatarUrl} alt={`${friend.name}头像`} className="w-full h-full object-cover" />
+                      ) : (
+                        <span>{friend.name.slice(0, 1)}</span>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-text">{friend.name}</div>

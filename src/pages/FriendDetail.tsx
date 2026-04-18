@@ -41,8 +41,12 @@ export default function FriendDetail() {
 
       <div className="px-4 pt-6 pb-4 bg-card">
         <div className="flex justify-center mb-2">
-          <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center text-primary text-2xl font-medium">
-            {friend.name.slice(0, 1)}
+          <div className="w-20 h-20 rounded-full bg-primary/20 overflow-hidden flex items-center justify-center text-primary text-2xl font-medium">
+            {friend.avatarUrl ? (
+              <img src={friend.avatarUrl} alt={`${friend.name}头像`} className="w-full h-full object-cover" />
+            ) : (
+              <span>{friend.name.slice(0, 1)}</span>
+            )}
           </div>
         </div>
         <h2 className="text-xl font-bold text-center text-text">{friend.name}</h2>

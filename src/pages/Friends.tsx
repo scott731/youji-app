@@ -127,8 +127,12 @@ export default function Friends() {
                         to={`/friends/${f.id}`}
                         className="flex gap-3 px-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50 active:bg-gray-100"
                       >
-                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-primary text-lg font-medium flex-shrink-0">
-                          {f.name.slice(0, 1)}
+                        <div className="w-12 h-12 rounded-full bg-primary/20 overflow-hidden flex items-center justify-center text-primary text-lg font-medium flex-shrink-0">
+                          {f.avatarUrl ? (
+                            <img src={f.avatarUrl} alt={`${f.name}头像`} className="w-full h-full object-cover" />
+                          ) : (
+                            <span>{f.name.slice(0, 1)}</span>
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">

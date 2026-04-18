@@ -1,5 +1,5 @@
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { store } from '../store'
 import type { Friend } from '../types'
 
@@ -12,6 +12,7 @@ export default function FriendEdit() {
 
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
+  const [avatarUrl, setAvatarUrl] = useState('')
   const [groupId, setGroupId] = useState('')
   const [intimacyLevel, setIntimacyLevel] = useState<1 | 2 | 3 | 4 | 5>(3)
   const [knowDate, setKnowDate] = useState('')
@@ -29,11 +30,14 @@ export default function FriendEdit() {
   const [taboos, setTaboos] = useState('')
   const [notes, setNotes] = useState('')
   const [tags, setTags] = useState('')
+  const [avatarError, setAvatarError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (existing) {
       setName(existing.name)
       setNickname(existing.nickname || '')
+      setAvatarUrl(existing.avatarUrl || '')
       setGroupId(existing.groupId || '')
       setIntimacyLevel(existing.intimacyLevel)
       setKnowDate(existing.knowDate?.slice(0, 10) || '')
@@ -54,6 +58,32 @@ export default function FriendEdit() {
     }
   }, [existing])
 
+  const handlePickAvatar = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('请选择图片文件')
+      e.target.value = ''
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setAvatarError('图片请控制在 2MB 以内')
+      e.target.value = ''
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setAvatarUrl(String(reader.result || ''))
+      setAvatarError('')
+    }
+    reader.readAsDataURL(file)
+    e.target.value = ''
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
@@ -69,6 +99,7 @@ export default function FriendEdit() {
       id: existing?.id || `f_${Date.now()}`,
       name: name.trim(),
       nickname: nickname.trim() || undefined,
+      avatarUrl: avatarUrl || undefined,
       groupId: groupId || undefined,
       groupName: group?.name,
       intimacyLevel,
@@ -105,8 +136,33 @@ export default function FriendEdit() {
 
       <form id="friend-form" onSubmit={handleSubmit} className="p-4 space-y-4">
         <div className="flex justify-center py-6">
-          <div className="w-24 h-24 rounded-full bg-primary/20 flex items-center justify-center text-primary text-3xl font-medium">
-            {name.slice(0, 1) || '?'}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={handlePickAvatar}
+              className="w-24 h-24 rounded-full bg-primary/20 overflow-hidden flex items-center justify-center text-primary text-3xl font-medium"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="头像预览" className="w-full h-full object-cover" />
+              ) : (
+                <span>{name.slice(0, 1) || '?'}</span>
+              )}
+            </button>
+            <div className="flex gap-2 text-xs">
+              <button type="button" onClick={handlePickAvatar} className="text-primary">上传头像</button>
+              {avatarUrl && (
+                <button type="button" onClick={() => setAvatarUrl('')} className="text-text-secondary">移除</button>
+              )}
+            </div>
+            <p className="text-text-hint text-xs">支持相册/本地文件，建议 2MB 以内</p>
+            {avatarError && <p className="text-red-500 text-xs">{avatarError}</p>}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
         </div>
 

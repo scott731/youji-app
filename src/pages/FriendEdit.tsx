@@ -3,6 +3,46 @@ import { useState, useEffect, useRef, type ChangeEvent } from 'react'
 import { store } from '../store'
 import type { Friend } from '../types'
 
+const MAX_UPLOAD_SIZE = 12 * 1024 * 1024
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('读取图片失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('解析图片失败'))
+    img.src = dataUrl
+  })
+}
+
+async function compressImage(file: File): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file)
+  const img = await loadImage(dataUrl)
+
+  const maxEdge = 640
+  const scale = Math.min(1, maxEdge / Math.max(img.width, img.height))
+  const width = Math.max(1, Math.round(img.width * scale))
+  const height = Math.max(1, Math.round(img.height * scale))
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return dataUrl
+
+  ctx.drawImage(img, 0, 0, width, height)
+  return canvas.toDataURL('image/jpeg', 0.8)
+}
+
 export default function FriendEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -62,7 +102,7 @@ export default function FriendEdit() {
     fileInputRef.current?.click()
   }
 
-  const handleAvatarChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
@@ -70,17 +110,18 @@ export default function FriendEdit() {
       e.target.value = ''
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setAvatarError('图片请控制在 2MB 以内')
+    if (file.size > MAX_UPLOAD_SIZE) {
+      setAvatarError('图片过大，请选择 12MB 以内的图片')
       e.target.value = ''
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      setAvatarUrl(String(reader.result || ''))
+    try {
+      const compressed = await compressImage(file)
+      setAvatarUrl(compressed)
       setAvatarError('')
+    } catch (_) {
+      setAvatarError('图片处理失败，请换一张试试')
     }
-    reader.readAsDataURL(file)
     e.target.value = ''
   }
 
@@ -154,7 +195,7 @@ export default function FriendEdit() {
                 <button type="button" onClick={() => setAvatarUrl('')} className="text-text-secondary">移除</button>
               )}
             </div>
-            <p className="text-text-hint text-xs">支持相册/本地文件，建议 2MB 以内</p>
+            <p className="text-text-hint text-xs">支持相册/本地文件，上传后自动压缩</p>
             {avatarError && <p className="text-red-500 text-xs">{avatarError}</p>}
             <input
               ref={fileInputRef}
